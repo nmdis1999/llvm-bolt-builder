@@ -45,56 +45,64 @@ else
 fi
 
 # Build stage1 clang from default gcc
-mkdir ${TOPLEV}/stage1
-cd $ {TOPLEV}/stage1
-cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc \
-        -DLLVM_ENABLE_PROJECTS="clang;lld" \
-        -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
-        -DCOMPILER_RT_BUILD_SANITIZERS=OFF -DCOMPILER_RT_BUILD_XRAY=OFF \
-        -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-        -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage1/install
-ninja install
+if [ ! -d ${TOPLEV} ]; then
+        mkdir ${TOPLEV}/stage1
+        cd $ {TOPLEV}/stage1
+        cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc \
+                -DLLVM_ENABLE_PROJECTS="clang;lld" \
+                -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
+                -DCOMPILER_RT_BUILD_SANITIZERS=OFF -DCOMPILER_RT_BUILD_XRAY=OFF \
+                -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+                -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage1/install
+        ninja install
+fi
 
 # Build stage2 compiler with Instrumentation
-mkdir ${TOPLEV}/stage2-prof-gen
-cd ${TOPLEV}/stage2-prof-gen
-CPATH=$ {TOPLEV}/stage1/install/bin/
-cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
-        -DLLVM_ENABLE_PROJECTS="clang;lld" \
-        -DLLVM_USE_LINKER=lld -DLLVM_BUILD_INSTRUMENTED=ON \
-        -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage2-prof-gen/install
-ninja install
+if [ ! -d ${TOPLEV}/stage2-prof-gen]; then
+        mkdir ${TOPLEV}/stage2-prof-gen
+        cd ${TOPLEV}/stage2-prof-gen
+        CPATH=$ {TOPLEV}/stage1/install/bin/
+        cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
+                -DLLVM_ENABLE_PROJECTS="clang;lld" \
+                -DLLVM_USE_LINKER=lld -DLLVM_BUILD_INSTRUMENTED=ON \
+                -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage2-prof-gen/install
+        ninja install
+fi
 
 # Generating profile for PGO
-mkdir $ {TOPLEV}/stage3-train
-cd $ {TOPLEV}/stage3-train
-CPATH=$ {TOPLEV}/stage2-prof-gen/install/bin
-cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
-        -DLLVM_ENABLE_PROJECTS="clang" \
-        -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage3-train/install
-ninja clang
+if [ ! -d ${TOPLEV}/stage3-train ]; then
+        mkdir ${TOPLEV}/stage3-train
+        cd $ {TOPLEV}/stage3-train
+        CPATH=$ {TOPLEV}/stage2-prof-gen/install/bin
+        cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
+                -DLLVM_ENABLE_PROJECTS="clang" \
+                -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage3-train/install
+        ninja clang
+fi
 
 # Merging profile before passing to Clang
 cd $ {TOPLEV}/stage2-prof-gen/profiles
 $ {TOPLEV}/stage1/install/bin/llvm-profdata merge -output=clang.profdata *
 
 # Building Clang with PGO and LTO
-mkdir $ {TOPLEV}/stage2-prof-use-lto
-cd $ {TOPLEV}/stage2-prof-use-lto
-CPATH=$ {TOPLEV}/stage1/install/bin/
-export LDFLAGS="-Wl,-q"
-cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
-        -DLLVM_ENABLE_PROJECTS="clang;lld" \
-        -DLLVM_ENABLE_LTO=Full \
-        -DLLVM_PROFDATA_FILE=$ {TOPLEV}/stage2-prof-gen/profiles/clang.profdata \
-        -DLLVM_USE_LINKER=lld \
-        -DCMAKE_INSTALL_PREFIX=${TOPLEV}/stage2-prof-use-lto/install
-ninja install
+if [ ! -d ${TOPLEV}/stage2-prof-use-lto ]; then
+        mkdir ${TOPLEV}/stage2-prof-use-lto
+        cd $ {TOPLEV}/stage2-prof-use-lto
+        CPATH=$ {TOPLEV}/stage1/install/bin/
+        export LDFLAGS="-Wl,-q"
+        cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_TARGETS_TO_BUILD=X86 \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
+                -DLLVM_ENABLE_PROJECTS="clang;lld" \
+                -DLLVM_ENABLE_LTO=Full \
+                -DLLVM_PROFDATA_FILE=$ {TOPLEV}/stage2-prof-gen/profiles/clang.profdata \
+                -DLLVM_USE_LINKER=lld \
+                -DCMAKE_INSTALL_PREFIX=${TOPLEV}/stage2-prof-use-lto/install
+        ninja install
+fi
