@@ -106,3 +106,21 @@ if [ ! -d ${TOPLEV}/stage2-prof-use-lto ]; then
                 -DCMAKE_INSTALL_PREFIX=${TOPLEV}/stage2-prof-use-lto/install
         ninja install
 fi
+
+# Optimising Clang with BOLT
+if [ ! -d ${TOPLEV}/stage3 ]; then
+        mkdir $ {TOPLEV}/stage3
+        cd $ {TOPLEV}/stage3
+        CPATH=$ {TOPLEV}/stage2-prof-use-lto/install/bin/
+        cmake -G Ninja $ {TOPLEV}/llvm-project/llvm -DLLVM_ENABLE_PROJECTS=clang \
+                -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=$CPATH/clang -DCMAKE_CXX_COMPILER=$CPATH/clang++ \
+                -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX=$ {TOPLEV}/stage3/install
+        perf record -e cycles: u -j any,u -- ninja clang
+fi
+
+# Converting perf.data to BOLT format where x is the clang version
+perf2bolt $CPATH/clang-x -p perf.data -o clang-x.fdata
+
+# Using the generated profile to get optimized binary
+llvm-bolt $CPATH/clang-7 -o $CPATH/clang-7.bolt
